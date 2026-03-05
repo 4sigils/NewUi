@@ -68,7 +68,11 @@ local function clamp(x,a,b) return x<a and a or x>b and b or x end
 local function lerp(a,b,t)  return a+(b-a)*clamp(t,0,1) end
 local function lerpC(a,b,t) return Color3.new(lerp(a.R,b.R,t),lerp(a.G,b.G,t),lerp(a.B,b.B,t)) end
 local function tw(s,sz)     return #(s or "")*(sz or 12)*0.55 end
+local _UIS = game:GetService("UserInputService")
 local function mpos()
+    local ok, v = pcall(function() return _UIS:GetMouseLocation() end)
+    if ok and v then return v end
+    -- fallback to GetMouse
     local lp=game:GetService("Players").LocalPlayer
     if lp then local m=lp:GetMouse(); if m then return Vector2.new(m.X,m.Y) end end
     return Vector2.new(0,0)
@@ -90,17 +94,33 @@ local function pDest(p)    for _,o in pairs(p.d) do pcall(function() o:Remove() 
 
 -- ── Input (UIS-based, no setrobloxinput) ─────────────────────────────────────
 local _m1=false; local _sd=0; local _kh={}
+
+-- Use ismouse1pressed if available (executor API), otherwise UIS
+local function _getM1()
+    if ismouse1pressed then return ismouse1pressed() end
+    return _m1
+end
+local function _getKey(kc)
+    if iskeypressed then return iskeypressed(kc) end
+    return _kh[kc] or false
+end
+
 pcall(function()
     local U=game:GetService("UserInputService")
+    -- Track mouse button via UIS as fallback
     U.InputBegan:Connect(function(i,gpe)
         if not i or not i.UserInputType then return end
         if i.UserInputType==Enum.UserInputType.MouseButton1 then _m1=true end
-        if i.UserInputType==Enum.UserInputType.Keyboard then _kh[i.KeyCode.Value]=true end
+        if i.UserInputType==Enum.UserInputType.Keyboard then
+            _kh[i.KeyCode.Value]=true
+        end
     end)
     U.InputEnded:Connect(function(i)
         if not i or not i.UserInputType then return end
         if i.UserInputType==Enum.UserInputType.MouseButton1 then _m1=false end
-        if i.UserInputType==Enum.UserInputType.Keyboard then _kh[i.KeyCode.Value]=false end
+        if i.UserInputType==Enum.UserInputType.Keyboard then
+            _kh[i.KeyCode.Value]=false
+        end
     end)
     U.InputChanged:Connect(function(i)
         if not i or not i.UserInputType then return end
@@ -114,14 +134,17 @@ pcall(function()
     m.WheelForward:Connect(function()  _sd=_sd-1 end)
     m.WheelBackward:Connect(function() _sd=_sd+1 end)
 end)
+
 local Input={_p={},click=false,held=false,scroll=0}
 function Input:update()
-    local m=_m1
+    local m=_getM1()
     self.click=m and not(self._p.m or false); self.held=m; self._p.m=m
     self.scroll=_sd; _sd=0
 end
-function Input:kclick(kc) local c=_kh[kc] or false; local p=self._p[kc] or false; self._p[kc]=c; return c and not p end
-function Input:kheld(kc)  return _kh[kc] or false end
+function Input:kclick(kc)
+    local c=_getKey(kc); local p=self._p[kc] or false; self._p[kc]=c; return c and not p
+end
+function Input:kheld(kc)  return _getKey(kc) end
 function Input:shift()    return self:kheld(0x10) or self:kheld(0xA0) or self:kheld(0xA1) end
 
 -- ── Notifications ─────────────────────────────────────────────────────────────
@@ -720,7 +743,7 @@ function Simpliness:CreateWindow(opts)
     WIN:_buildSettings()
     task.spawn(function()
         while WIN._running do
-            task.wait()
+            task.wait(1/40)  -- cap render at 40fps to avoid tanking fps
             if not isrbxactive() then continue end
             Input:update()
             if Input:kclick(WIN.MenuKey) then

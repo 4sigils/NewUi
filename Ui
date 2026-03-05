@@ -35,14 +35,14 @@ Simpliness = {}
 
 -- ── Palette ───────────────────────────────────────────────────────────────────
 local C = {
-    Bg        = Color3.fromRGB(15,  15,  25),   -- window body
-    Surface   = Color3.fromRGB(22,  22,  34),   -- section bg
-    Surface2  = Color3.fromRGB(30,  30,  44),   -- widget bg / input bg
-    Border    = Color3.fromRGB(42,  42,  58),   -- subtle borders
-    Accent    = Color3.fromRGB(200, 80,  160),  -- pink/magenta
-    AccentDim = Color3.fromRGB(110, 40,  88),   -- darker accent
-    Text      = Color3.fromRGB(230, 230, 240),  -- primary text
-    Sub       = Color3.fromRGB(120, 118, 138),  -- secondary / labels
+    Bg        = Color3.fromRGB(15,  15,  25),
+    Surface   = Color3.fromRGB(22,  22,  34),
+    Surface2  = Color3.fromRGB(30,  30,  44),
+    Border    = Color3.fromRGB(42,  42,  58),
+    Accent    = Color3.fromRGB(200, 80,  160),
+    AccentDim = Color3.fromRGB(110, 40,  88),
+    Text      = Color3.fromRGB(230, 230, 240),
+    Sub       = Color3.fromRGB(120, 118, 138),
     Red       = Color3.fromRGB(220, 70,  80),
     RedDark   = Color3.fromRGB(90,  22,  28),
 }
@@ -88,11 +88,11 @@ local function pFlush(p)   for id,o in pairs(p.d) do if not p.s[id] then o.Visib
 local function pHide(p,id) local o=p.d[id]; if o then o.Visible=false end end
 local function pDest(p)    for _,o in pairs(p.d) do pcall(function() o:Remove() end) end; p.d={}; p.s={} end
 
--- ── Input (all via UIS — works with setrobloxinput(false)) ───────────────────
+-- ── Input (UIS-based, no setrobloxinput) ─────────────────────────────────────
 local _m1=false; local _sd=0; local _kh={}
 pcall(function()
     local U=game:GetService("UserInputService")
-    U.InputBegan:Connect(function(i)
+    U.InputBegan:Connect(function(i,gpe)
         if not i or not i.UserInputType then return end
         if i.UserInputType==Enum.UserInputType.MouseButton1 then _m1=true end
         if i.UserInputType==Enum.UserInputType.Keyboard then _kh[i.KeyCode.Value]=true end
@@ -268,6 +268,11 @@ function Simpliness:CreateWindow(opts)
                 reg(it); it.cb(it.value)
                 return{Get=function()return it.value end,Set=function(_,v)it.value=v;it.cb(v)end}
             end
+            function SEC:AddTextbox(label,default,cb,placeholder)
+                local it={type="textbox",label=label,value=default or "",cb=cb or function()end,placeholder=placeholder or ("Enter "..label.."...")}
+                reg(it)
+                return{Get=function()return it.value end,Set=function(_,v)it.value=v;it.cb(v)end}
+            end
             function SEC:AddLabel(text,color) local it={type="label",label=text or "",color=color}; reg(it); return{Get=function()return it.label end,Set=function(_,v)it.label=v end} end
             function SEC:AddSeparator() reg({type="sep"}); return{} end
             table.insert(ST._sections,SEC); return SEC
@@ -277,7 +282,6 @@ function Simpliness:CreateWindow(opts)
         table.insert(SM._widgets,{type="sk_kill",   label="Kill Script"})
         table.insert(ST._sections,SM)
         local STH={_name="Theme",_widgets={},_collapsed=false}
-        -- (theme support can be extended here)
         table.insert(ST._sections,STH)
         table.insert(self._tabs,ST)
     end
@@ -305,11 +309,9 @@ function Simpliness:CreateWindow(opts)
         local listH=maxV*optH+sbH+4
         local listPos=ddP+Vector2.new(0,22)
 
-        -- Background
         pAdd(pool,wid.."bg",  "Square",{Position=listPos,Size=Vector2.new(iW,listH),Filled=true, Color=C.Surface2,Visible=true,ZIndex=90})
         pAdd(pool,wid.."bgb", "Square",{Position=listPos,Size=Vector2.new(iW,listH),Filled=false,Color=C.Accent,  Thickness=1,Visible=true,ZIndex=91})
 
-        -- Search box
         local sbP=listPos+Vector2.new(3,3); local sbS=Vector2.new(iW-6,sbH-6)
         if Input.click and over(sbP,sbS) then it._sfoc=true
         elseif Input.click and not over(sbP,sbS) then it._sfoc=false end
@@ -335,7 +337,6 @@ function Simpliness:CreateWindow(opts)
             end
         end
 
-        -- Scrollbar
         local visN=math.min(it.maxVisible,total)
         if hasSB then
             local barH=math.max(12,(listH-sbH)*(it.maxVisible/total))
@@ -355,12 +356,10 @@ function Simpliness:CreateWindow(opts)
             end
         end
 
-        -- Wheel scroll
         if Input.scroll~=0 and over(listPos,Vector2.new(iW,listH)) then
             it.scroll=clamp(it.scroll+Input.scroll,0,math.max(0,total-it.maxVisible))
         end
 
-        -- Options
         local optW=hasSB and (iW-SBW-4) or iW
         for vi=1,visN do
             local oi=vi+it.scroll; local opt=filt[oi]; if not opt then break end
@@ -394,10 +393,8 @@ function Simpliness:CreateWindow(opts)
     end
 
     -- ── Widget renderer ───────────────────────────────────────────────────────
-    -- Each widget: label on the LEFT (~60%), control on the RIGHT
-    -- Row height is compact: 24px per widget, 8px gap
     function WIN:_widget(it,pool,wid,wx,wy,iW,F)
-        local ROW=24  -- row height
+        local ROW=24
         local lblW=iW*0.55; local ctrlX=wx+lblW; local ctrlW=iW-lblW
 
         if it.type=="sep" then
@@ -411,9 +408,7 @@ function Simpliness:CreateWindow(opts)
         elseif it.type=="toggle" then
             it._a=lerp(it._a or (it.value and 1 or 0),it.value and 1 or 0,0.25)
             local a=it._a
-            -- label
             pAdd(pool,wid.."l","Text",{Position=Vector2.new(wx,wy+5),Text=it.label,Size=11,Font=F,Color=C.Sub,Outline=false,Visible=true,ZIndex=6})
-            -- toggle: small 22x12 pill on the right
             local tW,tH=22,12; local tX=wx+iW-tW; local tY=wy+6
             pAdd(pool,wid.."trk", "Square",{Position=Vector2.new(tX,tY),Size=Vector2.new(tW,tH),Filled=true, Color=lerpC(C.Surface2,C.Accent,a),Visible=true,ZIndex=6})
             pAdd(pool,wid.."trkb","Square",{Position=Vector2.new(tX,tY),Size=Vector2.new(tW,tH),Filled=false,Color=lerpC(C.Border,C.Accent,a),Thickness=1,Visible=true,ZIndex=7})
@@ -434,16 +429,13 @@ function Simpliness:CreateWindow(opts)
 
         elseif it.type=="slider" then
             local vs=tostring(it.value)..it.suffix
-            -- label left, value right (same row)
             pAdd(pool,wid.."l","Text",{Position=Vector2.new(wx,wy+5),Text=it.label,Size=11,Font=F,Color=C.Sub,Outline=false,Visible=true,ZIndex=6})
             pAdd(pool,wid.."v","Text",{Position=Vector2.new(wx+iW-tw(vs,11),wy+5),Text=vs,Size=11,Font=F,Color=C.Text,Outline=false,Visible=true,ZIndex=6})
-            -- track below
             local tP=Vector2.new(wx,wy+20); local tS=Vector2.new(iW,3)
             pAdd(pool,wid.."trk","Square",{Position=tP,Size=tS,Filled=true,Color=C.Surface2,Visible=true,ZIndex=6})
             local pct=clamp((it.value-it.min)/(it.max-it.min),0,1)
             local fw=math.max(3,tS.X*pct)
             pAdd(pool,wid.."fil","Square",{Position=tP,Size=Vector2.new(fw,tS.Y),Filled=true,Color=C.Accent,Visible=true,ZIndex=7})
-            -- knob: small circle (use square)
             local kx=tP.X+fw-5
             pAdd(pool,wid.."kn","Square",{Position=Vector2.new(kx,tP.Y-4),Size=Vector2.new(10,10),Filled=true,Color=C.Accent,Visible=true,ZIndex=8})
             if Input.click and over(tP-Vector2.new(0,6),tS+Vector2.new(0,14)) then self._sliderDrag=it end
@@ -467,10 +459,8 @@ function Simpliness:CreateWindow(opts)
                 disp=#sl==0 and "None" or (#sl.."/"..#it.options)
             else disp=it.value end
 
-            -- label left
             pAdd(pool,wid.."l","Text",{Position=Vector2.new(wx,wy+5),Text=it.label,Size=11,Font=F,Color=C.Sub,Outline=false,Visible=true,ZIndex=6})
 
-            -- pill dropdown on the right: accent-colored selected text
             local ddW=math.min(ctrlW,90); local ddH=18
             local ddX=wx+iW-ddW; local ddY=wy+3
             local ddP=Vector2.new(ddX,ddY); local ddS=Vector2.new(ddW,ddH)
@@ -478,13 +468,10 @@ function Simpliness:CreateWindow(opts)
 
             pAdd(pool,wid.."db",  "Square",{Position=ddP,Size=ddS,Filled=true, Color=C.Surface2,Visible=true,ZIndex=6})
             pAdd(pool,wid.."dbb", "Square",{Position=ddP,Size=ddS,Filled=false,Color=isOpen and C.Accent or C.Border,Thickness=1,Visible=true,ZIndex=7})
-            -- value text in accent color
             pAdd(pool,wid.."dv",  "Text",  {Position=ddP+Vector2.new(6,3),Text=disp,Size=11,Font=F,Color=C.Accent,Outline=false,Visible=true,ZIndex=7})
-            -- chevron
             local cx,cy=ddX+ddW-10,ddY+9
             pAdd(pool,wid.."arr","Triangle",{PointA=Vector2.new(cx,cy-3),PointB=Vector2.new(cx+6,cy-3),PointC=Vector2.new(cx+3,cy+3),Filled=true,Color=isOpen and C.Accent or C.Sub,Visible=true,ZIndex=7})
 
-            -- anchor for overlay
             if isOpen then
                 it._anchor  = ddP
                 it._anchorW = ddW
@@ -593,7 +580,7 @@ function Simpliness:CreateWindow(opts)
 
         pBegin(pool)
 
-        local TH=36  -- title bar height
+        local TH=36
         local padX=12
         local tabH=28
 
@@ -617,41 +604,33 @@ function Simpliness:CreateWindow(opts)
             end
         end
 
-        -- Suppress window scroll when dropdown open
+        -- Scroll (only when no dropdown open)
         if self._openDrop==nil and over(pos,sz) and Input.scroll~=0 then
             self._scrollVel=self._scrollVel+Input.scroll*16
         end
         self._scrollVel=self._scrollVel*0.75
         self._scrollY=math.max(0,self._scrollY+self._scrollVel)
 
-        -- ── Chrome ────────────────────────────────────────────────────────────
-        -- Main window bg
+        -- Chrome
         pAdd(pool,"wbg","Square",{Position=pos,Size=sz,Filled=true, Color=C.Bg,    Visible=true,ZIndex=1})
         pAdd(pool,"wbd","Square",{Position=pos,Size=sz,Filled=false,Color=C.Border,Thickness=1, Visible=true,ZIndex=2})
-
-        -- Title bar
         pAdd(pool,"tbg","Square",{Position=pos,Size=Vector2.new(sz.X,TH),Filled=true,Color=C.Surface,Visible=true,ZIndex=2})
-        -- Back arrow  ← 
         pAdd(pool,"arr","Text",{Position=pos+Vector2.new(10,10),Text="←",Size=13,Font=F,Color=C.Sub,Outline=false,Visible=true,ZIndex=3})
-        -- Title
         pAdd(pool,"ttx","Text",{Position=pos+Vector2.new(30,10),Text=self.Title,Size=13,Font=F,Color=C.Text,Outline=false,Visible=true,ZIndex=3})
-        -- Traffic lights (decorative)
         local tlX=pos.X+sz.X-14; local tlY=pos.Y+TH/2
         pAdd(pool,"tl1","Square",{Position=Vector2.new(tlX,tlY-4),    Size=Vector2.new(8,8),Filled=true,Color=Color3.fromRGB(255,95,86), Visible=true,ZIndex=3})
         pAdd(pool,"tl2","Square",{Position=Vector2.new(tlX-12,tlY-4), Size=Vector2.new(8,8),Filled=true,Color=Color3.fromRGB(255,189,46),Visible=true,ZIndex=3})
         pAdd(pool,"tl3","Square",{Position=Vector2.new(tlX-24,tlY-4), Size=Vector2.new(8,8),Filled=true,Color=Color3.fromRGB(40,200,64), Visible=true,ZIndex=3})
 
-        -- ── Tabs ──────────────────────────────────────────────────────────────
+        -- Tabs
         local tabY=TH+2; local tabX=8
         for i,tab in ipairs(self._tabs) do
             local tW2=tw(tab._name,12)+20
             local tpos=pos+Vector2.new(tabX,tabY); local tsz=Vector2.new(tW2,tabH)
             local open=(self._openTab==tab)
-            -- tab bg (subtle on hover)
             pAdd(pool,"tabbg"..i,"Square",{Position=tpos,Size=tsz,Filled=true,Color=open and C.Surface or C.Bg,Visible=true,ZIndex=3})
             local _tw2=tw(tab._name,12)
             pAdd(pool,"tabt"..i,"Text",{Position=Vector2.new(tpos.X+tW2/2-_tw2/2,tpos.Y+7),Text=tab._name,Size=12,Font=F,Color=open and C.Text or C.Sub,Center=false,Outline=false,Visible=true,ZIndex=4})
-            -- underline for active tab
             if open then
                 pAdd(pool,"tabul"..i,"Square",{Position=tpos+Vector2.new(0,tabH-2),Size=Vector2.new(tW2,2),Filled=true,Color=C.Accent,Visible=true,ZIndex=4})
             else pHide(pool,"tabul"..i) end
@@ -663,33 +642,26 @@ function Simpliness:CreateWindow(opts)
         end
         if not self._openTab then pFlush(pool); renderNotifs(); return end
 
-        -- ── Content area ──────────────────────────────────────────────────────
+        -- Content
         local contTop=TH+tabH+6
         local contH=sz.Y-contTop-6
         local colGap=8
-        local colW=(sz.X-padX*2-colGap)/2  -- two equal columns
+        local colW=(sz.X-padX*2-colGap)/2
         local iW=colW-padX*2
 
-        -- Measure total height for scroll (single pass estimate)
         local function estSecH(sec)
             local h=20
             if not sec._collapsed then
                 for _,it in ipairs(sec._widgets) do
-                    if     it.type=="sep"                                      then h=h+14
-                    elseif it.type=="label"                                    then h=h+28
-                    elseif it.type=="toggle"  or it.type=="keybind"            then h=h+28
-                    elseif it.type=="textbox"                                  then h=h+28
-                    elseif it.type=="dropdown" or it.type=="multidropdown"     then h=h+28
-                    elseif it.type=="slider"                                   then h=h+38
-                    elseif it.type=="button"                                   then h=h+30
-                    elseif it.type=="sk_keybind" or it.type=="sk_kill"        then h=h+28
+                    if     it.type=="sep"                                  then h=h+14
+                    elseif it.type=="slider"                               then h=h+38
+                    elseif it.type=="button" or it.type=="sk_kill"         then h=h+30
                     else h=h+28 end
                 end
             end
             return h+8
         end
 
-        -- Pair sections into 2-col rows
         local secs=self._openTab._sections
         local rows={}
         for i=1,#secs,2 do rows[#rows+1]={secs[i],secs[i+1]} end
@@ -701,7 +673,6 @@ function Simpliness:CreateWindow(opts)
         end
         self._scrollY=math.min(self._scrollY,math.max(0,totalH-contH))
 
-        -- Thin scrollbar on right edge
         if totalH>contH then
             local SBW=3; local sbX=pos.X+sz.X-SBW-1
             local sbH2=math.max(18,contH*(contH/totalH))
@@ -710,10 +681,8 @@ function Simpliness:CreateWindow(opts)
             pAdd(pool,"scbar","Square",{Position=Vector2.new(sbX,pos.Y+sbY),    Size=Vector2.new(SBW,sbH2), Filled=true,Color=C.Accent,Visible=true,ZIndex=6})
         end
 
-        -- Draw a section
         local function drawSec(sec,sid,absX,relY)
             local absY=pos.Y+relY
-            -- section label (small caps style)
             local hdrP=Vector2.new(absX+padX,absY+4)
             pAdd(pool,sid.."hdr","Text",{Position=hdrP,Text=sec._name,Size=10,Font=F,Color=C.Sub,Outline=false,Visible=true,ZIndex=6})
             if Input.click and over(hdrP-Vector2.new(0,2),Vector2.new(colW,14)) then
@@ -749,7 +718,6 @@ function Simpliness:CreateWindow(opts)
 
     -- ── Main loop ─────────────────────────────────────────────────────────────
     WIN:_buildSettings()
-    pcall(function() setrobloxinput(false) end)
     task.spawn(function()
         while WIN._running do
             task.wait()
@@ -762,10 +730,8 @@ function Simpliness:CreateWindow(opts)
                     WIN._tbTarget=nil; WIN._kbTarget=nil; WIN._settingsListen=false
                 end
             end
-            pcall(function() setrobloxinput(not WIN._open) end)
             WIN:_render()
         end
-        pcall(function() setrobloxinput(true) end)
         pDest(WIN._pool); pDest(WIN._overlayPool); pDest(_np)
     end)
 
